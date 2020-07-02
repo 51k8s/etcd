@@ -118,8 +118,10 @@ yum -y install etcd
 
 
 编辑配置文件etcd.conf
+https://github.com/CNCF123/etcd/blob/master/etcd.conf
 
 编辑配置文件etcd.service
+https://github.com/CNCF123/etcd/blob/master/etcd.service
 
 启动
 启动前需要将其他节点配置文件和ssl文件等都复制到其他节点，然后一起启动
