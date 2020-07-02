@@ -1,0 +1,246 @@
+集群信息
+node1 192.168.0.101
+node2 192.168.0.102
+node3 192.168.0.103
+
+安装cfssl
+curl -s -L -o /bin/cfssl https://pkg.cfssl.org/R1.2/cfssl_linux-amd64
+curl -s -L -o /bin/cfssljson https://pkg.cfssl.org/R1.2/cfssljson_linux-amd64
+curl -s -L -o /bin/cfssl-certinfo https://pkg.cfssl.org/R1.2/cfssl-certinfo_linux-amd64
+chmod +x /bin/cfssl*
+
+
+创建文件夹
+mkdir -p /home/etcd/ssl
+cd /home/etcd/ssl
+
+创建 CA 配置文件（ca-config.json）
+cat > ca-config.json <<EOF
+{
+  "signing": {
+    "default": {
+      "expiry": "87600h"
+    },
+    "profiles": {
+      "www": {
+         "expiry": "87600h",
+         "usages": [
+            "signing",
+            "key encipherment",
+            "server auth",
+            "client auth"
+        ]
+      }
+    }
+  }
+}
+EOF
+
+"字段说明"
+"ca-config.json"：可以定义多个 profiles，分别指定不同的过期时间、使用场景等参数；后续在签名证书时使用某个 profile；
+"signing"：表示该证书可用于签名其它证书；生成的 ca.pem 证书中 CA=TRUE；
+"server auth"：表示client可以用该 CA 对server提供的证书进行验证；
+"client auth"：表示server可以用该CA对client提供的证书进行验证；
+
+
+创建 CA 证书签名请求（ca-csr.json）
+cat > ca-csr.json <<EOF
+{
+    "CN": "etcd CA",
+    "key": {
+        "algo": "rsa",
+        "size": 2048
+    },
+    "names": [
+        {
+            "C": "CN",
+            "L": "Shenzhen",
+            "ST": "Shenzhen",
+            "O": "etcd",
+            "OU": "System"
+        }
+    ]
+}
+EOF
+
+"CN"：Common Name，etcd 从证书中提取该字段作为请求的用户名 (User Name)；浏览器使用该字段验证网站是否合法；
+"O"：Organization，etcd 从证书中提取该字段作为请求用户所属的组 (Group)；
+这两个参数在后面的kubernetes启用RBAC模式中很重要，因为需要设置kubelet、admin等角色权限，那么在配置证书的时候就必须配置对了，具体后面在部署kubernetes的时候会进行讲解。
+"在etcd这两个参数没太大的重要意义，跟着配置就好。"
+
+
+生成 CA 证书和私钥
+cfssl gencert -initca ca-csr.json | cfssljson -bare ca -
+
+
+创建 etcd证书签名请求（etcd-csr.json）
+cat > server-csr.json <<EOF
+{
+    "CN": "etcd",
+    "hosts": [
+    "192.168.0.101",
+    "192.168.0.102",
+    "192.168.0.103"
+    ],
+    "key": {
+        "algo": "rsa",
+        "size": 2048
+    },
+    "names": [
+        {
+            "C": "CN",
+            "L": "Nanjing",
+            "ST": "Nanjing",
+            "O": "etcd",
+            "OU": "System"
+        }
+    ]
+}
+EOF
+
+修改配置文件，注意，注意，注意把集群的ip列表加到server-csr.json中的hosts
+
+
+生成 etcd证书和私钥 
+cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=www server-csr.json | cfssljson -bare server
+
+将TLS 认证文件拷贝至证书目录下
+mkdir -p /etc/etcd/etcdSSL
+cp * /etc/etcd/etcdSSL
+
+
+安装etcd
+yum -y install etcd
+
+
+编辑etcd的配置文件（/etc/etcd/etcd.conf）
+vim /etc/etcd/etcd.conf
+
+#[Member]
+ETCD_NAME="etcd01"   ### 每个节点不一样
+ETCD_DATA_DIR="/var/lib/etcd/default.etcd"
+ETCD_LISTEN_PEER_URLS="https://192.168.0.101:2380"    #改成当前服务器的ip
+ETCD_LISTEN_CLIENT_URLS="https://192.168.0.101:2379"  #改成当前服务器的ip
+
+#[Clustering]
+ETCD_INITIAL_ADVERTISE_PEER_URLS="https://192.168.0.101:2380"
+ETCD_ADVERTISE_CLIENT_URLS="https://192.168.0.101:2379"
+ETCD_INITIAL_CLUSTER="etcd01=https://192.168.0.101:2380,etcd02=https://192.168.0.102:2380,etcd03=https://192.168.0.103:2380"
+ETCD_INITIAL_CLUSTER_TOKEN="etcd-cluster"
+ETCD_INITIAL_CLUSTER_STATE="new"
+
+#参数说明
+ETCD_NAME 节点名称
+ETCD_DATA_DIR 数据目录
+ETCD_LISTEN_PEER_URLS 集群通信监听地址
+ETCD_LISTEN_CLIENT_URLS 客户端访问监听地址
+ETCD_INITIAL_ADVERTISE_PEER_URLS 集群通告地址
+ETCD_ADVERTISE_CLIENT_URLS 客户端通告地址
+ETCD_INITIAL_CLUSTER 集群节点地址
+ETCD_INITIAL_CLUSTER_TOKEN 集群Token
+ETCD_INITIAL_CLUSTER_STATE 加入集群的当前状态，new是新集群，existing表示加入已有集群
+
+编辑 etcd.service
+vim /usr/lib/systemd/system/etcd.service 
+
+[Unit]
+Description=Etcd Server
+After=network.target
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+WorkingDirectory=/var/lib/etcd/
+EnvironmentFile=-/etc/etcd/etcd.conf
+User=etcd
+#set GOMAXPROCS to number of processors
+ExecStart=/usr/bin/etcd \
+--name=${ETCD_NAME} \
+--data-dir=${ETCD_DATA_DIR}\
+--listen-peer-urls=${ETCD_LISTEN_PEER_URLS} \
+--listen-client-urls=${ETCD_LISTEN_CLIENT_URLS},https://127.0.0.1:2379 \
+--advertise-client-urls=${ETCD_ADVERTISE_CLIENT_URLS} \
+--initial-advertise-peer-urls=${ETCD_INITIAL_ADVERTISE_PEER_URLS} \
+--initial-cluster=${ETCD_INITIAL_CLUSTER} \
+--initial-cluster-token=${ETCD_INITIAL_CLUSTER_TOKEN} \
+--initial-cluster-state=${ETCD_INITIAL_CLUSTER_STATE} \
+--cert-file=/etc/etcd/etcdSSL/etcd.pem \
+--key-file=/etc/etcd/etcdSSL/etcd-key.pem \
+--peer-cert-file=/etc/etcd/etcdSSL/etcd.pem \
+--peer-key-file=/home/etcd/ssl/server-key.pem \
+--trusted-ca-file=/etc/etcd/etcdSSL/ca.pem \
+--peer-trusted-ca-file=/etc/etcd/etcdSSL/ca.pem
+
+Restart=on-failure
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+
+参数说明：
+1、指定 etcd 的工作目录为 /var/lib/etcd，数据目录为 /var/lib/etcd，需在启动服务前创建这两个目录；
+在配置中的命令是这条：
+WorkingDirectory=/var/lib/etcd/
+
+2、为了保证通信安全，需要指定 etcd 的公私钥(cert-file和key-file)、Peers 通信的公私钥和 CA 证书(peer-cert-file、peer-key-file、peer-trusted-ca-file)、客户端的CA证书（trusted-ca-file）；
+在配置中添加etcd证书的命令是以下：
+  --cert-file=/etc/etcd/etcdSSL/etcd.pem \
+  --key-file=/etc/etcd/etcdSSL/etcd-key.pem \
+  --peer-cert-file=/etc/etcd/etcdSSL/etcd.pem \
+  --peer-key-file=/etc/etcd/etcdSSL/etcd-key.pem \
+  --trusted-ca-file=/etc/etcd/etcdSSL/ca.pem \
+  --peer-trusted-ca-file=/etc/etcd/etcdSSL/ca.pem \
+
+3、配置etcd的endpoint：
+  --initial-cluster infra1=https://172.16.1.168:2380 \
+
+4、配置etcd的监听服务集群：
+  --initial-advertise-peer-urls ${ETCD_INITIAL_ADVERTISE_PEER_URLS} \
+  --listen-peer-urls ${ETCD_LISTEN_PEER_URLS} \
+  --listen-client-urls ${ETCD_LISTEN_CLIENT_URLS},http://127.0.0.1:2379 \
+  --advertise-client-urls ${ETCD_ADVERTISE_CLIENT_URLS} \
+
+5、配置etcd创建的集群为新集群，则定义集群状态为new
+   --initial-cluster-state 值为 new
+
+6、定义etcd节点的名称，该名称等下从配置文件中获取：
+  --name ${ETCD_NAME} \ 
+  其中配置文件：EnvironmentFile=-/etc/etcd/etcd.conf
+
+
+
+启动
+启动前需要将其他节点配置文件和ssl文件等都复制到其他节点，然后一起启动
+
+systemctl start etcd
+
+
+### etcdctl apiv2，注意修改秘钥信息
+
+vim ~/.bashrc
+
+alias etcdctl="etcdctl  --endpoints=https://192.168.0.101:2379 --cert-file=/etc/etcd/etcdSSL/etcd.pem --key-file=/etc/etcd/etcdSSL/etcd-key.pem --ca-file=/etc/etcd/etcdSSL/ca.pem"
+
+source ~/.bashrc
+
+etcdctl cluster-health
+
+
+### etcdctl apiv3，注意修改秘钥信息
+
+# vim ~/.bashrc
+
+alias etcdv3="ETCDCTL_API=3 etcdctl --endpoints https://192.168.0.101:2379,https://192.168.0.102:2379,https://192.168.0.103:2379  --cacert=/etc/etcd/etcdSSL/ca.pem --cert=/etc/etcd/etcdSSL/etcd.pem --key=/etc/etcd/etcdSSL/etcd-key.pem"
+
+
+alias etcdv2="ETCDCTL_API=2 etcdctl --endpoints https://192.168.0.101:2379,https://192.168.0.102:2379,https://192.168.0.103:2379  --ca-file=/etc/etcd/etcdSSL/ca.pem --cert-file=/etc/etcd/etcdSSL/etcd.pem --key-file=/etc/etcd/etcdSSL/etcd-key.pem"
+
+source ~/.bashrc
+
+
+查看集群状态
+etcdv3 endpoint status --write-out=table
+
+查看etcd的所有key
+etcdv3 get / --prefix --keys-only
