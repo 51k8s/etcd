@@ -132,7 +132,6 @@ systemctl start etcd
 ### etcdctl apiv2，注意修改秘钥信息
 
 vim ~/.bashrc
-
 alias etcdctl="etcdctl  --endpoints=https://192.168.0.101:2379 --cert-file=/etc/etcd/etcdSSL/etcd.pem --key-file=/etc/etcd/etcdSSL/etcd-key.pem --ca-file=/etc/etcd/etcdSSL/ca.pem"
 
 source ~/.bashrc
@@ -143,10 +142,7 @@ etcdctl cluster-health
 ### etcdctl apiv3，注意修改秘钥信息
 
 # vim ~/.bashrc
-
 alias etcdv3="ETCDCTL_API=3 etcdctl --endpoints https://192.168.0.101:2379,https://192.168.0.102:2379,https://192.168.0.103:2379  --cacert=/etc/etcd/etcdSSL/ca.pem --cert=/etc/etcd/etcdSSL/etcd.pem --key=/etc/etcd/etcdSSL/etcd-key.pem"
-
-
 alias etcdv2="ETCDCTL_API=2 etcdctl --endpoints https://192.168.0.101:2379,https://192.168.0.102:2379,https://192.168.0.103:2379  --ca-file=/etc/etcd/etcdSSL/ca.pem --cert-file=/etc/etcd/etcdSSL/etcd.pem --key-file=/etc/etcd/etcdSSL/etcd-key.pem"
 
 source ~/.bashrc
