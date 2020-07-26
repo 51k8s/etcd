@@ -46,7 +46,7 @@ EOF
 创建 CA 证书签名请求（ca-csr.json）
 cat > ca-csr.json <<EOF
 {
-    "CN": "DefautlCA",
+    "CN": "etcd",
     "key": {
         "algo": "rsa",
         "size": 2048
@@ -56,8 +56,8 @@ cat > ca-csr.json <<EOF
             "C": "CN",
             "L": "Shanghai",
             "ST": "Shanghai",
-            "O": "company",
-            "OU": "ops"
+            "O": "etcd",
+            "OU": "System"
         }
     ]
 }
@@ -91,10 +91,10 @@ cat > etcd-csr.json <<EOF
     "names": [
         {
             "C": "CN",
-            "L": "Nanjing",
-            "ST": "Nanjing",
+            "L": "Shanghai",
+            "ST": "Shanghai",
             "O": "etcd",
-            "OU": "system"
+            "OU": "System"
         }
     ]
 }
