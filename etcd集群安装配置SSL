@@ -1,7 +1,7 @@
 集群信息
-node1 192.168.0.101
-node2 192.168.0.102
-node3 192.168.0.103
+192.168.0.101 etcd01
+192.168.0.102 etcd02
+192.168.0.103 etcd03
 
 安装cfssl
 curl -s -L -o /bin/cfssl https://pkg.cfssl.org/R1.2/cfssl_linux-amd64
