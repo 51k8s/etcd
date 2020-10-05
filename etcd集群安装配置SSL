@@ -73,4 +73,3 @@ etcdv3 endpoint status --write-out=table
 
 查看etcd的所有key
 etcdv3 get / --prefix --keys-only
-111
