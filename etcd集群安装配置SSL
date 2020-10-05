@@ -14,50 +14,23 @@ chmod +x /bin/cfssl*
 mkdir -p /etc/etcd/ssl
 
 生成etcd CA证书和CA证书的key
-
-[root@k8s-master01 pki]#  cfssl gencert -initca etcd-ca-csr.json | cfssljson -bare /etc/etcd/ssl/etcd-ca
-
-
-说明：生成 "ca-key.pem  ca.pem" 2个文件
-
-
-创建 etcd证书签名请求（etcd-csr.json）
-cat > etcd-csr.json <<EOF
-{
-    "CN": "etcd",
-    "hosts": [
-    "192.168.0.101",
-    "192.168.0.102",
-    "192.168.0.103"
-    ],
-    "key": {
-        "algo": "rsa",
-        "size": 2048
-    },
-    "names": [
-        {
-            "C": "CN",
-            "L": "Shanghai",
-            "ST": "Shanghai",
-            "O": "etcd",
-            "OU": "System"
-        }
-    ]
-}
-EOF
-
-修改配置文件，注意，注意，注意把集群的ip列表加到etcd-csr.json中的hosts
-
+[root@k8s-master01 ]# git clone https://github.com/CNCF123/pki.git
+[root@k8s-master01 ]# cd pki
+[root@k8s-master01 pki]# cfssl gencert -initca etcd-ca-csr.json | cfssljson -bare /etc/etcd/ssl/etcd-ca
 
 生成 etcd证书和私钥 
-cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=etcd etcd-csr.json | cfssljson -bare etcd
+[root@k8s-master01 pki]# cfssl gencert \
+   -ca=/etc/etcd/ssl/etcd-ca.pem \
+   -ca-key=/etc/etcd/ssl/etcd-ca-key.pem \
+   -config=ca-config.json \
+   -hostname=127.0.0.1,etcd01,etcd02,etcd03,192.168.0.201,192.168.0.202,192.168.0.203 \
+   -profile=kubernetes \
+   etcd-csr.json | cfssljson -bare /etc/etcd/ssl/etcd
 
-生成 "etcd-key.pem  etcd.pem" 2个文件。
+注意，注意，注意把集群的ip列表加到hostname
 
-将TLS 认证文件拷贝至证书目录下
-mkdir -p /etc/etcd/etcdSSL
-cp * /etc/etcd/etcdSSL
-
+生成如下文件
+etcd-ca.csr  etcd-ca-key.pem  etcd-ca.pem  etcd.csr  etcd-key.pem  etcd.pem  
 
 安装etcd
 yum -y install etcd
@@ -78,7 +51,7 @@ systemctl start etcd
 ### etcdctl apiv2，注意修改秘钥信息
 
 vim ~/.bashrc
-alias etcdctl="etcdctl  --endpoints=https://192.168.0.101:2379 --cert-file=/etc/etcd/etcdSSL/etcd.pem --key-file=/etc/etcd/etcdSSL/etcd-key.pem --ca-file=/etc/etcd/etcdSSL/ca.pem"
+alias etcdctl="etcdctl  --endpoints=https://192.168.0.101:2379 --cert-file=/etc/etcd/ssl/etcd.pem --key-file=/etc/etcd/ssl/etcd-key.pem --ca-file=/etc/etcd/ssl/etcd-ca.pem"
 
 source ~/.bashrc
 
@@ -88,8 +61,9 @@ etcdctl cluster-health
 ### etcdctl apiv3，注意修改秘钥信息
 
 # vim ~/.bashrc
-alias etcdv3="ETCDCTL_API=3 etcdctl --endpoints https://192.168.0.101:2379,https://192.168.0.102:2379,https://192.168.0.103:2379  --cacert=/etc/etcd/etcdSSL/ca.pem --cert=/etc/etcd/etcdSSL/etcd.pem --key=/etc/etcd/etcdSSL/etcd-key.pem"
-alias etcdv2="ETCDCTL_API=2 etcdctl --endpoints https://192.168.0.101:2379,https://192.168.0.102:2379,https://192.168.0.103:2379  --ca-file=/etc/etcd/etcdSSL/ca.pem --cert-file=/etc/etcd/etcdSSL/etcd.pem --key-file=/etc/etcd/etcdSSL/etcd-key.pem"
+alias etcdv3="ETCDCTL_API=3 etcdctl --endpoints https://192.168.0.101:2379,https://192.168.0.102:2379,https://192.168.0.103:2379  --cacert=/etc/etcd/ssl/etcd-ca.pem --cert=/etc/etcd/ssl/etcd.pem --key=/etc/etcd/ssl/etcd-key.pem"
+
+alias etcdv2="ETCDCTL_API=2 etcdctl --endpoints https://192.168.0.101:2379,https://192.168.0.102:2379,https://192.168.0.103:2379  --ca-file=/etc/etcd/ssl/etcd-ca.pem --cert-file=/etc/etcd/ssl/etcd.pem --key-file=/etc/etcd/ssl/etcd-key.pem"
 
 source ~/.bashrc
 
